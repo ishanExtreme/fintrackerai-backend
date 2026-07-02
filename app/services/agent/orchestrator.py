@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from functools import lru_cache
+from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import StructuredTool
@@ -51,9 +52,18 @@ def _handoff_tools() -> list:
     return tools
 
 
-@lru_cache(maxsize=32)
+# Chat models aren't hashable, so we can't use lru_cache here. Cache the bound
+# model by id(model); get_model() returns a per-key cached instance, so the id
+# is stable across a user's requests.
+_HANDOFF_BOUND: dict[int, Any] = {}
+
+
 def _bind_handoffs(model):
-    return model.bind_tools(_handoff_tools())
+    bound = _HANDOFF_BOUND.get(id(model))
+    if bound is None:
+        bound = model.bind_tools(_handoff_tools())
+        _HANDOFF_BOUND[id(model)] = bound
+    return bound
 
 
 def orchestrator(state: AssistantState) -> dict:

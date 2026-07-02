@@ -25,6 +25,7 @@ from langgraph.types import Command
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.logging_config import timed
 from app.schemas import ChatEvent
 
 from .callbacks import LoggingCallbackHandler
@@ -125,7 +126,8 @@ def run_turn(
                 "route": "",
             }
         )
-        result = graph.invoke(payload, config=cfg)
+        with timed(logger, f"agent turn [{conversation_id[:8]}]"):
+            result = graph.invoke(payload, config=cfg)
 
         state = graph.get_state(cfg)
         if state and state.interrupts:

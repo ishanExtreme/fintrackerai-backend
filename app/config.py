@@ -6,6 +6,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    # Logging
+    log_level: str = "INFO"  # DEBUG shows full LLM payloads (system prompt + history)
+
     # Database
     database_url: str = "sqlite:///./finance.db"
 

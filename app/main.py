@@ -2,7 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import models  # noqa: F401 - ensure models are registered on Base
+from .config import get_settings
 from .db import Base, engine
+from .logging_config import setup_logging
 from .routers import (
     budgets,
     categories,
@@ -12,6 +14,9 @@ from .routers import (
     settings,
     transactions,
 )
+
+# Install our colored, timing-friendly logging before anything logs.
+setup_logging(get_settings().log_level)
 
 
 def create_app() -> FastAPI:
