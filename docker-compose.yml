@@ -1,0 +1,34 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: finance
+      POSTGRES_PASSWORD: finance
+      POSTGRES_DB: finance
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finance"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg2://finance:finance@db:5432/finance
+      AUTH_MODE: ${AUTH_MODE:-firebase}
+      FIREBASE_CREDENTIALS_FILE: ${FIREBASE_CREDENTIALS_FILE:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      FERNET_KEY: ${FERNET_KEY:-}
+    ports:
+      - "8000:8000"
+    # Mount a service-account file into the container if you use Firebase auth:
+    # volumes:
+    #   - ./serviceAccount.json:/srv/serviceAccount.json:ro
+
+volumes:
+  pgdata:
