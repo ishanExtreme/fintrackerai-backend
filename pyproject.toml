@@ -26,8 +26,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8", "httpx>=0.27"]
 
-[tool.setuptools]
-packages = ["app", "app.routers"]
+[tool.setuptools.packages.find]
+include = ["app*"]
 
 [tool.pytest.ini_options]
 addopts = "-q"

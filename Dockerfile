@@ -5,9 +5,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /srv
 
-COPY pyproject.toml ./
+# Install uv (same tooling as local dev) and use it to install the project.
+RUN pip install --no-cache-dir uv
+
+COPY pyproject.toml README.md ./
 COPY app ./app
-RUN pip install --no-cache-dir .
+RUN uv pip install --system --no-cache .
+
+# Run as a non-root user.
+RUN useradd --create-home --uid 10001 appuser \
+    && chown -R appuser:appuser /srv
+USER appuser
 
 EXPOSE 8000
 

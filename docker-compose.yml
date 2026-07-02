@@ -20,12 +20,18 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # Values below are interpolated from server/.env (docker compose reads it
+    # automatically). Copy .env.example → .env and fill it in.
     environment:
       DATABASE_URL: postgresql+psycopg2://finance:finance@db:5432/finance
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       AUTH_MODE: ${AUTH_MODE:-firebase}
       FIREBASE_CREDENTIALS_FILE: ${FIREBASE_CREDENTIALS_FILE:-}
       LLM_MODEL: ${LLM_MODEL:-google_genai:gemini-3.5-flash}
       LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_TIMEOUT_S: ${LLM_TIMEOUT_S:-45}
+      LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-2}
+      AGENT_RECURSION_LIMIT: ${AGENT_RECURSION_LIMIT:-12}
       FERNET_KEY: ${FERNET_KEY:-}
     ports:
       - "8000:8000"
