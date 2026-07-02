@@ -3,7 +3,8 @@
 FastAPI + PostgreSQL backend for an LLM-first, open-source personal finance
 tracker. Phase 1 covers auth, the flexible category model, transactions
 (incl. structured SMS ingest), budgets, investments, and dashboard aggregates.
-The LLM chat layer lands in Phase 2.
+Phase 2 adds the LLM chat agent (LangGraph orchestrator + Gemini) with
+bring-your-own-key support.
 
 ## Features (Phase 1)
 
@@ -22,6 +23,27 @@ The LLM chat layer lands in Phase 2.
 - **Investments** (amount-only per month — no returns/prices).
 - **Dashboard aggregates** for spend-per-category, budget status, and monthly
   investment totals.
+
+## Features (Phase 2 — LLM chat agent)
+
+- **LangGraph orchestrator + registered specialist nodes**: a supervisor LLM delegates to `expenses`, `budgets`, and
+  `investments` nodes. Adding a capability = one node module + `register_node(...)`.
+- **Gemini** via LangChain `init_chat_model("google_genai:gemini-3.5-flash")` —
+  provider is a one-line config swap (`LLM_MODEL`).
+- **Bring-your-own key:** each user can store their own Gemini key
+  (`PUT /settings/llm-key`), Fernet-encrypted at rest; the server falls back to a
+  shared `LLM_API_KEY` when the user has none.
+- **`POST /chat`** — `{conversation_id, message}` → `{reply, events[], awaiting_user}`.
+  "I spent 500 on biryani" records a Food expense; "spent 1200 on a movie ticket"
+  auto-creates a *Movie tickets* sub-category under *Personal*; "how much is left
+  for food this month?" answers from the budget; adding an expense that nears/exceeds
+  a budget returns a warning in the reply and a `budget_warning` event.
+- `ask_user` clarification pauses the turn (LangGraph `interrupt`) and resumes on
+  the next message with the same `conversation_id`. History uses an in-memory
+  checkpointer for now (Postgres checkpointer is a documented follow-up).
+
+> Runs the agent **synchronously** (`graph.invoke`) because the finance tools do
+> synchronous DB writes — the orchestrator/node/registry structure otherwise
 
 ## Run locally (Docker)
 

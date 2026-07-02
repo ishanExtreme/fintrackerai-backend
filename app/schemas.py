@@ -163,3 +163,39 @@ class BudgetStatusRow(BaseModel):
 class MonthlyInvestment(BaseModel):
     month: str
     total: float
+
+
+# ----------------------------- Chat / LLM agent -----------------------------
+class ChatRequest(BaseModel):
+    conversation_id: str = Field(..., description="Per-session id == LangGraph thread_id.")
+    message: str = Field(..., min_length=1)
+
+
+class ChatEvent(BaseModel):
+    """A structured side-effect the app can render (e.g. a budget warning),
+    emitted by a tool alongside the natural-language reply."""
+
+    type: str
+    data: dict = Field(default_factory=dict)
+
+
+class ChatResponse(BaseModel):
+    conversation_id: str
+    reply: str
+    events: list[ChatEvent] = Field(default_factory=list)
+    awaiting_user: bool = Field(
+        default=False,
+        description="True when the reply is a clarifying question; the app should "
+        "keep the conversation open and post the answer under the same id.",
+    )
+
+
+class LlmKeyIn(BaseModel):
+    api_key: str = Field(..., min_length=1)
+    provider: str = "google_genai"
+
+
+class LlmKeyStatus(BaseModel):
+    configured: bool  # user has stored their own key
+    provider: str | None = None
+    using: str  # "user" | "shared" | "none"

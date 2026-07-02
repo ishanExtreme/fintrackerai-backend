@@ -3,7 +3,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import models  # noqa: F401 - ensure models are registered on Base
 from .db import Base, engine
-from .routers import budgets, categories, dashboard, investments, transactions
+from .routers import (
+    budgets,
+    categories,
+    chat,
+    dashboard,
+    investments,
+    settings,
+    transactions,
+)
 
 
 def create_app() -> FastAPI:
@@ -26,6 +34,8 @@ def create_app() -> FastAPI:
     app.include_router(budgets.router)
     app.include_router(investments.router)
     app.include_router(dashboard.router)
+    app.include_router(chat.router)
+    app.include_router(settings.router)
 
     @app.get("/health", tags=["meta"])
     def health() -> dict[str, str]:

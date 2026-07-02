@@ -22,7 +22,8 @@ services:
       DATABASE_URL: postgresql+psycopg2://finance:finance@db:5432/finance
       AUTH_MODE: ${AUTH_MODE:-firebase}
       FIREBASE_CREDENTIALS_FILE: ${FIREBASE_CREDENTIALS_FILE:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-google_genai:gemini-3.5-flash}
+      LLM_API_KEY: ${LLM_API_KEY:-}
       FERNET_KEY: ${FERNET_KEY:-}
     ports:
       - "8000:8000"
