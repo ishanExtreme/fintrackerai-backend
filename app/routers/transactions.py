@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..auth import get_current_user
 from ..db import get_db
-from ..utils import month_range
+from ..utils import descendant_category_ids, month_range
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -109,22 +109,43 @@ def delete_transaction(
 
 @router.delete("", response_model=schemas.TransactionDeleteResult)
 def delete_transactions(
-    month: str | None = Query(default=None, description="Delete all of a 'YYYY-MM' month"),
-    all: bool = Query(default=False, description="Delete every transaction (requires no month)"),
+    month: str | None = Query(default=None, description="Delete within a 'YYYY-MM' month"),
+    all: bool = Query(default=False, description="Delete every transaction (no other filters)"),
+    category_id: int | None = Query(
+        default=None, description="Scope to a category (includes its sub-categories)"
+    ),
+    uncategorized: bool = Query(
+        default=False, description="Scope to transactions with no category"
+    ),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
     """Bulk-delete the user's transactions — the app's "reset expenses" action.
 
-    Pass exactly one of ``month`` (that month only) or ``all=true`` (everything).
-    Destructive and irreversible; the app double-confirms before calling this.
+    Either ``all=true`` (everything, no other filter) or ``month`` is required.
+    Within a month you may further scope by ``category_id`` (that category and its
+    sub-categories) or ``uncategorized=true`` (transactions with no category);
+    those two are mutually exclusive. Destructive and irreversible; the app
+    double-confirms before calling this.
     """
-    if all == bool(month):
+    if category_id is not None and uncategorized:
         raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "Pass exactly one of 'month' or 'all=true'"
+            status.HTTP_400_BAD_REQUEST,
+            "'category_id' and 'uncategorized' are mutually exclusive",
         )
+
     q = db.query(models.Transaction).filter(models.Transaction.user_id == user.id)
-    if month:
+
+    if all:
+        if month or category_id is not None or uncategorized:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "'all=true' cannot be combined with other filters"
+            )
+    else:
+        if not month:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Provide 'month' (optionally scoped), or 'all=true'"
+            )
         try:
             start, end = month_range(month)
         except (ValueError, IndexError):
@@ -132,6 +153,13 @@ def delete_transactions(
         q = q.filter(
             models.Transaction.occurred_on >= start, models.Transaction.occurred_on < end
         )
+        if category_id is not None:
+            _validate_category(db, user.id, category_id)  # 400 if not owned
+            ids = descendant_category_ids(db, user.id, category_id)
+            q = q.filter(models.Transaction.category_id.in_(list(ids)))
+        elif uncategorized:
+            q = q.filter(models.Transaction.category_id.is_(None))
+
     deleted = q.delete(synchronize_session=False)
     db.commit()
     return schemas.TransactionDeleteResult(deleted=deleted)
