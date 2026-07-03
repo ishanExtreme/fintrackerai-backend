@@ -16,7 +16,12 @@ from app.db import Base
 config = context.config
 
 # Prefer the app's DATABASE_URL over the placeholder in alembic.ini.
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+# Escape '%' as '%%' so configparser doesn't treat percent-encoded characters in
+# the URL (e.g. a password's '@' written as '%40') as interpolation syntax.
+# SQLAlchemy reads the value back with the single '%' restored.
+config.set_main_option(
+    "sqlalchemy.url", get_settings().database_url.replace("%", "%%")
+)
 
 # Interpret the config file for Python logging (CLI use only). We pass
 # disable_existing_loggers=False so running `alembic ...` never wipes an app's
