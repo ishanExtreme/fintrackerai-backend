@@ -26,6 +26,26 @@ from langchain_core.messages import HumanMessage
 from app.services.agent.ask_user import ask_user
 
 
+def message_text(message: Any) -> str:
+    """Plain text of a message whose `content` may be a list of blocks.
+
+    Gemini (and other providers) return `content` as a list of content-block
+    dicts (e.g. ``{'type': 'text', 'text': ..., 'extras': {...}}``) rather than a
+    bare string. Join just the text blocks — ``str(content)`` would leak the raw
+    repr (signatures and all) into the reply.
+    """
+    content = getattr(message, "content", "")
+    if isinstance(content, str):
+        return content.strip()
+    parts: list[str] = []
+    for part in content or []:
+        if isinstance(part, str):
+            parts.append(part)
+        elif isinstance(part, dict) and part.get("type") == "text":
+            parts.append(part.get("text", ""))
+    return "".join(parts).strip()
+
+
 @dataclass
 class AssistantNode:
     """A specialist the orchestrator can delegate to."""
@@ -57,9 +77,7 @@ class AssistantNode:
             out = built.invoke({"task": task})
             return (out.get("result") or "").strip() or f"{self.name} done."
         out = built.invoke({"messages": [HumanMessage(content=task)]})
-        content = getattr(out["messages"][-1], "content", "")
-        text = content if isinstance(content, str) else str(content)
-        return text.strip() or f"{self.name} done."
+        return message_text(out["messages"][-1]) or f"{self.name} done."
 
 
 _REGISTRY: dict[str, AssistantNode] = {}

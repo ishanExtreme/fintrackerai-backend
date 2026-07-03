@@ -30,25 +30,12 @@ from app.schemas import ChatEvent
 
 from .callbacks import LoggingCallbackHandler
 from .llm import get_model
-from .nodes.base import AssistantNode, all_nodes
+from .nodes.base import AssistantNode, all_nodes, message_text
 from .orchestrator import END_ROUTE, orchestrator
 from .runtime import request_scope
 from .state import AssistantState
 
 logger = logging.getLogger("agent")
-
-
-def _reply_text(message) -> str:
-    content = getattr(message, "content", "")
-    if isinstance(content, str):
-        return content.strip()
-    parts: list[str] = []
-    for part in content or []:
-        if isinstance(part, str):
-            parts.append(part)
-        elif isinstance(part, dict) and part.get("type") == "text":
-            parts.append(part.get("text", ""))
-    return "".join(parts).strip()
 
 
 def _make_runner(node: AssistantNode):
@@ -135,7 +122,7 @@ def run_turn(
             reply = q.get("question", "") if isinstance(q, dict) else str(q)
             awaiting = True
         else:
-            reply = _reply_text(result["messages"][-1])
+            reply = message_text(result["messages"][-1])
             awaiting = False
 
         acts = list(events)
