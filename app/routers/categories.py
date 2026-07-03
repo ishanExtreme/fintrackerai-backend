@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..auth import get_current_user
 from ..db import get_db
+from ..utils import descendant_category_ids
 
 router = APIRouter(prefix="/categories", tags=["categories"])
 
@@ -90,12 +91,21 @@ def update_category(
 ):
     cat = _get_owned_category(db, user.id, category_id)
 
-    if payload.parent_id is not None:
-        if payload.parent_id == category_id:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "A category cannot be its own parent")
-        _get_owned_category(db, user.id, payload.parent_id)
-
     data = payload.model_dump(exclude_unset=True)
+
+    # Reparenting (drag-and-drop): validate ownership and guard against cycles.
+    # A null parent_id detaches the category to the top level.
+    if "parent_id" in data and data["parent_id"] is not None:
+        new_parent_id = data["parent_id"]
+        if new_parent_id == category_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "A category cannot be its own parent")
+        _get_owned_category(db, user.id, new_parent_id)  # validate ownership
+        if new_parent_id in descendant_category_ids(db, user.id, category_id):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Cannot move a category under one of its own descendants",
+            )
+
     for field, value in data.items():
         setattr(cat, field, value)
     db.commit()

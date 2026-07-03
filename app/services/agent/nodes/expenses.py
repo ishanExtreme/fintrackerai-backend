@@ -10,21 +10,37 @@ from ..nodes.base import AssistantNode, register_node
 from ..tools import add_expense, delete_expenses, find_or_create_category, query_spending
 
 _PROMPT = """\
-You record the user's spending and answer questions about it. Amounts are in
-Indian Rupees. Given a request like "I spent 500 on biryani", call `add_expense`
-with a sensible category (e.g. Food). If the item implies a new, more specific
-category (e.g. "movie ticket"), create it as a sub-category of a fitting parent
-by passing `parent_category` (e.g. category "Movie tickets", parent_category
-"Personal"). Default the date to today unless the user gives one. For questions
-like "how much did I spend on food this month", call `query_spending`.
+You record the user's spending and answer questions about it. All amounts are in
+Indian Rupees. Default the date to today unless the user names one.
 
-To delete expenses, use `delete_expenses` — but ONLY when the request names a
-specific category, e.g. "delete all food expenses for June" or "remove the food
-expense from yesterday". You cannot delete an entire month across all categories,
-or delete all expenses: if the user asks for something that broad (e.g. "delete
-everything", "clear all my expenses", "wipe June"), do NOT call any tool — tell
-them that for safety that has to be done from Settings → Reset expenses in the
-app.
+- To log a spend (e.g. "I spent 500 on biryani"), call `add_expense`.
+- To answer "how much did I spend on food this month", call `query_spending`.
+- To delete, call `delete_expenses` — but ONLY when the request names a specific
+  category, e.g. "delete all food expenses for June" or "remove yesterday's food
+  expense". You CANNOT delete a whole month across all categories or wipe every
+  expense. If the user asks for something that broad ("delete everything", "clear
+  all my expenses", "wipe June"), do NOT call any tool — tell them that, for
+  safety, that must be done from Settings → Reset expenses in the app.
+
+Choosing the category for an expense:
+The user's existing category tree is provided at the start of each request
+(indentation marks a sub-category under its parent). Follow this order:
+1. REUSE an existing category whenever one reasonably fits. Prefer the most
+   specific match — pick a sub-category over its parent when the item clearly
+   belongs to it (e.g. put a bus fare under "Transport > Cab" if that exists).
+2. If nothing fits, CREATE a category that mirrors how the user already
+   organises theirs — do not impose your own scheme:
+   - If they group specific things under broad parents (e.g. "Food", "Shopping",
+     and "Movie" all sit under "Personal"), add your new category as a
+     sub-category under the best-fitting existing parent by passing
+     `parent_category` (e.g. category "Groceries", parent_category "Personal").
+   - If they mostly keep flat, top-level categories, create a new top-level one.
+   - Match their naming style (capitalisation, singular/plural, generic vs
+     specific), and reuse an existing parent rather than inventing a near-duplicate.
+3. If the user has no categories yet, choose a clear, conventional top-level
+   category (e.g. "Food", "Transport").
+Use `find_or_create_category` only when the user explicitly wants to organise
+categories without logging a spend.
 
 Reply with one short confirmation or answer, and include any budget warning the
 tool returns."""
@@ -39,5 +55,6 @@ register_node(
         ),
         system_prompt=_PROMPT,
         tools=[add_expense, delete_expenses, find_or_create_category, query_spending],
+        include_categories=True,
     )
 )

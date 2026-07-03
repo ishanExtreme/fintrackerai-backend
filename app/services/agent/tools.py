@@ -22,6 +22,39 @@ def _current_month() -> str:
     return current_today().strftime("%Y-%m")
 
 
+def format_user_categories(db, uid) -> str:
+    """A plain-text view of the user's category tree, for prompt context.
+
+    Indentation shows nesting (sub-categories under their parent), so the model
+    can both reuse existing categories and mirror the user's own organisation
+    when it must create a new one. Returns "" if the user has no categories yet.
+    """
+    cats = (
+        db.query(models.Category)
+        .filter(models.Category.user_id == uid)
+        .order_by(models.Category.name)
+        .all()
+    )
+    if not cats:
+        return ""
+
+    ids = {c.id for c in cats}
+    children: dict[int | None, list] = {}
+    for c in cats:
+        parent = c.parent_id if c.parent_id in ids else None
+        children.setdefault(parent, []).append(c)
+
+    lines: list[str] = []
+
+    def walk(parent_id, depth):
+        for c in sorted(children.get(parent_id, []), key=lambda x: x.name.lower()):
+            lines.append(f"{'  ' * depth}- {c.name}")
+            walk(c.id, depth + 1)
+
+    walk(None, 0)
+    return "The user's existing categories (indentation = sub-category):\n" + "\n".join(lines)
+
+
 def _fmt(x: float) -> str:
     x = float(x)
     return f"{x:,.0f}" if x == int(x) else f"{x:,.2f}"

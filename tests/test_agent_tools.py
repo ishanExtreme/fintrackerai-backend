@@ -149,6 +149,34 @@ def test_delete_expenses_unknown_category_is_a_noop():
         db.close()
 
 
+def test_format_user_categories_shows_nesting():
+    db = SessionLocal()
+    try:
+        u = _mk_user(db)
+        with request_scope(db=db, user_id=u.id, llm_key=None, today=JULY):
+            # Create a sub-category so the tree has depth.
+            tools.find_or_create_category.invoke(
+                {"name": "Movie tickets", "parent_category": "Personal"}
+            )
+        out = tools.format_user_categories(db, u.id)
+        assert "- Personal" in out
+        assert "  - Movie tickets" in out  # indented under its parent
+    finally:
+        db.close()
+
+
+def test_format_user_categories_empty_when_none():
+    db = SessionLocal()
+    try:
+        u = models.User(firebase_uid="empty-cats", email="e@example.com")
+        db.add(u)
+        db.commit()
+        db.refresh(u)
+        assert tools.format_user_categories(db, u.id) == ""
+    finally:
+        db.close()
+
+
 def test_investments_record_and_query():
     db = SessionLocal()
     try:

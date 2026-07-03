@@ -24,7 +24,8 @@ from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage
 
 from app.services.agent.ask_user import ask_user
-from app.services.agent.runtime import current_today
+from app.services.agent.runtime import current_db, current_today, current_user_id
+from app.services.agent.tools import format_user_categories
 
 
 def _dated_task(task: str) -> str:
@@ -36,6 +37,16 @@ def _dated_task(task: str) -> str:
     YYYY-MM-DD for their tools.
     """
     return f"Today's date is {current_today().isoformat()}.\n\n{task}"
+
+
+def _with_categories(task: str) -> str:
+    """Prepend the user's live category tree so the node can reuse/extend it.
+
+    Like the date, this is per-request state that can't live in the cached
+    system prompt, so it rides along with the task.
+    """
+    tree = format_user_categories(current_db(), current_user_id())
+    return f"{tree}\n\n{task}" if tree else task
 
 
 def message_text(message: Any) -> str:
@@ -67,6 +78,9 @@ class AssistantNode:
     system_prompt: str = ""
     tools: list[Any] = field(default_factory=list)
     graph_factory: Optional[Callable[[Any], Any]] = None
+    # Prepend the user's category tree to each task (for nodes that resolve or
+    # create categories, so they reuse existing ones and mirror the structure).
+    include_categories: bool = False
 
     _built: dict[int, Any] = field(default_factory=dict, init=False, repr=False)
 
@@ -86,6 +100,8 @@ class AssistantNode:
         """Execute the node on its sub-query, returning the result text."""
         built = self._get_built(model)
         task = _dated_task(task)
+        if self.include_categories:
+            task = _with_categories(task)
         if self.graph_factory is not None:
             out = built.invoke({"task": task})
             return (out.get("result") or "").strip() or f"{self.name} done."
