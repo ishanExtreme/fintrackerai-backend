@@ -170,6 +170,55 @@ def add_expense(
 
 
 @tool
+def delete_expenses(category: str, month: str | None = None, date: str | None = None) -> str:
+    """Delete recorded expenses in ONE category, scoped to a month or a single day.
+
+    category: REQUIRED — the category whose expenses to delete (its sub-categories
+        are included too).
+    month: optional 'YYYY-MM' — delete that whole month's expenses in the category.
+    date: optional 'YYYY-MM-DD' — delete only that day's expenses in the category
+        (takes precedence over month). If neither is given, the current month is used.
+
+    IMPORTANT: this only ever deletes within a single named category. It CANNOT
+    wipe an entire month across all categories, nor delete all expenses — if the
+    user asks for that, do NOT call this tool; tell them to open
+    Settings → Reset expenses to do it themselves.
+    """
+    db, uid = current_db(), current_user_id()
+    cat = _find_category(db, uid, category)
+    if not cat:
+        return f"You have no category named {category}, so there's nothing to delete."
+
+    cat_ids = descendant_category_ids(db, uid, cat.id)
+    q = db.query(models.Transaction).filter(
+        models.Transaction.user_id == uid,
+        models.Transaction.category_id.in_(list(cat_ids)),
+    )
+    day = _parse_date(date)
+    if day:
+        q = q.filter(models.Transaction.occurred_on == day)
+        scope = f"on {day.isoformat()}"
+    else:
+        m = month or _current_month()
+        try:
+            start, end = month_range(m)
+        except (ValueError, IndexError):
+            return f"{m!r} isn't a valid month — use YYYY-MM."
+        q = q.filter(
+            models.Transaction.occurred_on >= start, models.Transaction.occurred_on < end
+        )
+        scope = f"in {m}"
+
+    count = q.count()
+    if count == 0:
+        return f"No {cat.name} expenses found {scope}."
+    q.delete(synchronize_session=False)
+    db.commit()
+    record_event("expenses_deleted", category=cat.name, scope=scope, count=count)
+    return f"Deleted {count} {cat.name} expense{'s' if count != 1 else ''} {scope}."
+
+
+@tool
 def find_or_create_category(
     name: str, parent_category: str | None = None
 ) -> str:

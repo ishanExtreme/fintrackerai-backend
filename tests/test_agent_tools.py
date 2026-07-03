@@ -101,6 +101,54 @@ def test_set_and_query_budget_remaining_rolls_up_subcategories():
         db.close()
 
 
+def test_delete_expenses_scoped_to_category_and_month():
+    db = SessionLocal()
+    try:
+        u = _mk_user(db)
+        with request_scope(db=db, user_id=u.id, llm_key=None, today=JULY) as events:
+            tools.add_expense.invoke({"amount": 500, "category": "Food", "date": "2026-07-03"})
+            tools.add_expense.invoke({"amount": 700, "category": "Food", "date": "2026-07-20"})
+            tools.add_expense.invoke({"amount": 900, "category": "Food", "date": "2026-08-01"})
+            tools.add_expense.invoke({"amount": 300, "category": "Transport", "date": "2026-07-04"})
+            out = tools.delete_expenses.invoke({"category": "Food", "month": "2026-07"})
+
+        assert "2" in out and "Food" in out
+        assert any(e.type == "expenses_deleted" and e.data["count"] == 2 for e in events)
+        remaining = db.query(models.Transaction).filter_by(user_id=u.id).all()
+        # August Food + July Transport survive; both July Food rows are gone.
+        assert len(remaining) == 2
+        assert {int(t.amount) for t in remaining} == {900, 300}
+    finally:
+        db.close()
+
+
+def test_delete_expenses_scoped_to_single_day():
+    db = SessionLocal()
+    try:
+        u = _mk_user(db)
+        with request_scope(db=db, user_id=u.id, llm_key=None, today=JULY):
+            tools.add_expense.invoke({"amount": 500, "category": "Food", "date": "2026-07-03"})
+            tools.add_expense.invoke({"amount": 700, "category": "Food", "date": "2026-07-20"})
+            out = tools.delete_expenses.invoke({"category": "Food", "date": "2026-07-03"})
+
+        assert "2026-07-03" in out
+        remaining = db.query(models.Transaction).filter_by(user_id=u.id).all()
+        assert [int(t.amount) for t in remaining] == [700]
+    finally:
+        db.close()
+
+
+def test_delete_expenses_unknown_category_is_a_noop():
+    db = SessionLocal()
+    try:
+        u = _mk_user(db)
+        with request_scope(db=db, user_id=u.id, llm_key=None, today=JULY):
+            out = tools.delete_expenses.invoke({"category": "Nope", "month": "2026-07"})
+        assert "no category" in out.lower()
+    finally:
+        db.close()
+
+
 def test_investments_record_and_query():
     db = SessionLocal()
     try:

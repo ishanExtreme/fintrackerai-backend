@@ -107,6 +107,36 @@ def delete_transaction(
     return None
 
 
+@router.delete("", response_model=schemas.TransactionDeleteResult)
+def delete_transactions(
+    month: str | None = Query(default=None, description="Delete all of a 'YYYY-MM' month"),
+    all: bool = Query(default=False, description="Delete every transaction (requires no month)"),
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Bulk-delete the user's transactions — the app's "reset expenses" action.
+
+    Pass exactly one of ``month`` (that month only) or ``all=true`` (everything).
+    Destructive and irreversible; the app double-confirms before calling this.
+    """
+    if all == bool(month):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Pass exactly one of 'month' or 'all=true'"
+        )
+    q = db.query(models.Transaction).filter(models.Transaction.user_id == user.id)
+    if month:
+        try:
+            start, end = month_range(month)
+        except (ValueError, IndexError):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "month must be 'YYYY-MM'")
+        q = q.filter(
+            models.Transaction.occurred_on >= start, models.Transaction.occurred_on < end
+        )
+    deleted = q.delete(synchronize_session=False)
+    db.commit()
+    return schemas.TransactionDeleteResult(deleted=deleted)
+
+
 @router.post("/ingest", response_model=schemas.SmsIngestResult)
 def ingest_sms(
     payload: schemas.SmsIngest,

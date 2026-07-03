@@ -85,6 +85,10 @@ class TransactionOut(BaseModel):
     source: str
 
 
+class TransactionDeleteResult(BaseModel):
+    deleted: int
+
+
 class SmsIngest(BaseModel):
     """Structured payload produced by on-device SMS/notification parsing.
 
