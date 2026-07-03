@@ -21,26 +21,32 @@ def _require_month(month: str) -> tuple[dt.date, dt.date]:
 
 @router.get("/spending", response_model=list[schemas.SpendingRow])
 def spending_by_category(
-    month: str = Query(..., description="'YYYY-MM'"),
+    month: str | None = Query(
+        default=None,
+        description="'YYYY-MM'. Omit for lifetime (all-time) spending.",
+    ),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
-    """Total spend per (leaf) category for the month. Uncategorised rolls up as null."""
-    start, end = _require_month(month)
+    """Total spend per category. With ``month`` it's that month; without it,
+    lifetime (all-time). Uncategorised rolls up as null.
 
-    rows = (
-        db.query(
-            models.Transaction.category_id,
-            func.coalesce(func.sum(models.Transaction.amount), 0.0),
-        )
-        .filter(
-            models.Transaction.user_id == user.id,
+    Every row carries ``parent_id`` so the app can build the category tree and
+    drill from a parent into its sub-categories.
+    """
+    q = db.query(
+        models.Transaction.category_id,
+        func.coalesce(func.sum(models.Transaction.amount), 0.0),
+    ).filter(models.Transaction.user_id == user.id)
+
+    if month is not None:
+        start, end = _require_month(month)
+        q = q.filter(
             models.Transaction.occurred_on >= start,
             models.Transaction.occurred_on < end,
         )
-        .group_by(models.Transaction.category_id)
-        .all()
-    )
+
+    rows = q.group_by(models.Transaction.category_id).all()
 
     cats = {
         c.id: c

@@ -35,3 +35,5 @@ htmlcov/
 .idea/
 .vscode/
 .DS_Store
+
+secrets/

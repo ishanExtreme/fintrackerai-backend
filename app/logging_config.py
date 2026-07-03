@@ -84,6 +84,10 @@ def setup_logging(level: str = "INFO") -> None:
     # Quiet noisy libraries; we add our own request/timing lines.
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
+    # Alembic runs on startup (schema upgrade). Set this before it's imported so
+    # its INFO plugin/migration chatter stays out of normal boots; a real
+    # migration or an error still surfaces at WARNING+.
+    logging.getLogger("alembic").setLevel(logging.WARNING)
 
 
 def _ms(seconds: float) -> str:

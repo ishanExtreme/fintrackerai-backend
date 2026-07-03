@@ -1,3 +1,6 @@
+import logging
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -19,9 +22,38 @@ from .routers import (
 setup_logging(get_settings().log_level)
 
 
+log = logging.getLogger("app.startup")
+
+
+def _init_schema() -> None:
+    """Bring the database schema up to date.
+
+    Schema is Alembic-managed: on startup we run ``alembic upgrade head`` so a
+    fresh database is created (and an existing one migrated) from the versioned
+    migrations. If Alembic can't run for any reason, we fall back to
+    ``create_all`` so local/dev startup never hard-fails.
+    """
+    try:
+        from alembic import command
+        from alembic.config import Config
+
+        server_dir = Path(__file__).resolve().parent.parent
+        # Build the Config WITHOUT the .ini file: passing the ini makes Alembic's
+        # env.py run fileConfig(), which (disable_existing_loggers=True) would
+        # wipe uvicorn's error/access loggers and silence all request logs.
+        # We point it at the migrations dir directly instead; env.py reads the
+        # DB URL from app settings.
+        cfg = Config()
+        cfg.set_main_option("script_location", str(server_dir / "alembic"))
+        command.upgrade(cfg, "head")
+        log.info("Database schema is at Alembic head.")
+    except Exception as exc:  # noqa: BLE001 - dev-friendly fallback
+        log.warning("Alembic upgrade failed (%s); falling back to create_all.", exc)
+        Base.metadata.create_all(bind=engine)
+
+
 def create_app() -> FastAPI:
-    # Phase 1 uses create_all; a follow-up will switch to Alembic migrations.
-    Base.metadata.create_all(bind=engine)
+    _init_schema()
 
     app = FastAPI(title="Finance Tracker API", version="0.1.0")
 

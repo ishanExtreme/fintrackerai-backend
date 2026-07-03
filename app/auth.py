@@ -1,3 +1,6 @@
+import threading
+from functools import lru_cache
+
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -6,34 +9,38 @@ from .config import get_settings
 from .db import get_db
 from .seed import seed_default_categories
 
-_firebase_ready = False
+_init_lock = threading.Lock()
 
 
-def _init_firebase() -> None:
-    """Initialise the firebase-admin app once (lazy — dev mode never needs it)."""
-    global _firebase_ready
-    if _firebase_ready:
-        return
+@lru_cache(maxsize=1)
+def _firebase_app():
+    """Initialise the firebase-admin app exactly once and return it.
+
+    ``lru_cache`` + a lock make this idempotent even when the first few requests
+    race concurrently — otherwise two of them both call ``initialize_app()`` and
+    the second raises "The default Firebase app already exists". We also reuse an
+    app initialised elsewhere via ``get_app()`` as a belt-and-suspenders guard.
+    """
     import firebase_admin
     from firebase_admin import credentials
 
     settings = get_settings()
-    if not firebase_admin._apps:
+    with _init_lock:
+        if firebase_admin._apps:
+            return firebase_admin.get_app()
         if settings.firebase_credentials_file:
             cred = credentials.Certificate(settings.firebase_credentials_file)
-            firebase_admin.initialize_app(cred)
-        else:
-            # Falls back to Application Default Credentials.
-            firebase_admin.initialize_app()
-    _firebase_ready = True
+            return firebase_admin.initialize_app(cred)
+        # Falls back to Application Default Credentials.
+        return firebase_admin.initialize_app()
 
 
 def _verify_firebase_token(token: str) -> dict:
-    _init_firebase()
     from firebase_admin import auth as fb_auth
 
     try:
-        return fb_auth.verify_id_token(token)
+        # Pass the explicit app so verification never triggers a default-app init.
+        return fb_auth.verify_id_token(token, app=_firebase_app())
     except Exception as exc:  # noqa: BLE001 - surface any verification failure as 401
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
