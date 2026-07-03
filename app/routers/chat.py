@@ -33,6 +33,7 @@ def chat(
         db=db,
         user_id=user.id,
         llm_key=llm_key,
+        tz=req.tz,
     )
     return schemas.ChatResponse(
         conversation_id=req.conversation_id,

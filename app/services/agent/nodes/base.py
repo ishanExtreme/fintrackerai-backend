@@ -24,6 +24,18 @@ from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage
 
 from app.services.agent.ask_user import ask_user
+from app.services.agent.runtime import current_today
+
+
+def _dated_task(task: str) -> str:
+    """Anchor the specialist's turn to today's date.
+
+    Sub-agents are built once and cached per model, so the live date can't live
+    in their (static) system prompt. Prepend it to each task instead, so nodes
+    can resolve relative dates ("yesterday", "last Friday") into a concrete
+    YYYY-MM-DD for their tools.
+    """
+    return f"Today's date is {current_today().isoformat()}.\n\n{task}"
 
 
 def message_text(message: Any) -> str:
@@ -73,6 +85,7 @@ class AssistantNode:
     def run(self, model: Any, task: str) -> str:
         """Execute the node on its sub-query, returning the result text."""
         built = self._get_built(model)
+        task = _dated_task(task)
         if self.graph_factory is not None:
             out = built.invoke({"task": task})
             return (out.get("result") or "").strip() or f"{self.name} done."

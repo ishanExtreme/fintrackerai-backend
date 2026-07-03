@@ -169,6 +169,11 @@ class MonthlyInvestment(BaseModel):
 class ChatRequest(BaseModel):
     conversation_id: str = Field(..., description="Per-session id == LangGraph thread_id.")
     message: str = Field(..., min_length=1)
+    tz: str | None = Field(
+        None,
+        description="IANA timezone of the user (e.g. 'Asia/Kolkata') used to resolve "
+        "'today'/'this month'. Falls back to the server's local date if unset or invalid.",
+    )
 
 
 class ChatEvent(BaseModel):

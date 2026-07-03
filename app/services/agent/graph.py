@@ -17,6 +17,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 from functools import lru_cache
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from langchain_core.messages import HumanMessage, ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
@@ -80,6 +81,17 @@ def _graph():
     return graph
 
 
+def _today_in_tz(tz: str | None) -> dt.date | None:
+    """Today's date in the user's IANA timezone, or None to fall back to server local."""
+    if not tz:
+        return None
+    try:
+        return dt.datetime.now(ZoneInfo(tz)).date()
+    except (ZoneInfoNotFoundError, ValueError):
+        logger.warning("invalid tz %r; using server local date", tz)
+        return None
+
+
 def run_turn(
     *,
     conversation_id: str,
@@ -87,10 +99,12 @@ def run_turn(
     db: Session,
     user_id: int,
     llm_key: str | None,
+    tz: str | None = None,
     today: dt.date | None = None,
 ) -> tuple[str, list[ChatEvent], bool]:
     """Run (or resume) one turn. Returns (reply, events, awaiting_user)."""
     settings = get_settings()
+    today = today or _today_in_tz(tz)
     graph = _graph()
     cfg = {
         "configurable": {"thread_id": conversation_id},
