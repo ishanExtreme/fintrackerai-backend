@@ -74,6 +74,10 @@ def create_app() -> FastAPI:
     app.include_router(chat.router)
     app.include_router(settings.router)
 
+    @app.get("/", tags=["meta"])
+    def root() -> dict[str, str]:
+        return {"message": "Finance Tracker API. See /docs for the OpenAPI UI."}
+
     @app.get("/health", tags=["meta"])
     def health() -> dict[str, str]:
         return {"status": "ok"}

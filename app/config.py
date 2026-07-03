@@ -14,7 +14,15 @@ class Settings(BaseSettings):
 
     # Auth: "firebase" (verify Firebase ID tokens) or "dev" (trust X-Dev-* headers)
     auth_mode: str = "firebase"
+    # Path to the service-account JSON downloaded from the Firebase console.
     firebase_credentials_file: str | None = None
+    # Alternative to the file path: the raw service-account JSON itself (raw or
+    # base64-encoded). Prefer this in production (e.g. a single env var / secret)
+    # so no secret file is baked into the image. Takes precedence over the file.
+    firebase_credentials_json: str = ""
+    # Optional Firebase project id. Normally inferred from the service-account
+    # credential; only needed for the ADC fallback or to override.
+    firebase_project_id: str = ""
 
     # --- LLM agent (Phase 2 — LangGraph orchestrator + Gemini) ---
     # LangChain `provider:model` string; swap provider/model via env only.

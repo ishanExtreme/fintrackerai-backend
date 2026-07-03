@@ -1,3 +1,5 @@
+import base64
+import json
 import threading
 from functools import lru_cache
 
@@ -12,6 +14,25 @@ from .seed import seed_default_categories
 _init_lock = threading.Lock()
 
 
+def _parse_service_account(raw: str) -> dict:
+    """Parse a service-account JSON string, accepting raw JSON or base64 JSON.
+
+    Some env editors choke on raw JSON (quotes + embedded ``\\n``); base64
+    sidesteps that — encode the JSON once and paste a single clean token.
+    """
+    raw = raw.strip()
+    if raw.startswith("{"):
+        return json.loads(raw)
+    try:
+        # binascii.Error and UnicodeDecodeError both subclass ValueError.
+        decoded = base64.b64decode(raw, validate=True).decode("utf-8")
+    except ValueError as exc:
+        raise ValueError(
+            "FIREBASE_CREDENTIALS_JSON is neither valid JSON nor base64-encoded JSON."
+        ) from exc
+    return json.loads(decoded)
+
+
 @lru_cache(maxsize=1)
 def _firebase_app():
     """Initialise the firebase-admin app exactly once and return it.
@@ -20,6 +41,9 @@ def _firebase_app():
     race concurrently — otherwise two of them both call ``initialize_app()`` and
     the second raises "The default Firebase app already exists". We also reuse an
     app initialised elsewhere via ``get_app()`` as a belt-and-suspenders guard.
+
+    Credentials are resolved in order: inline JSON (raw or base64) → file path →
+    Application Default Credentials.
     """
     import firebase_admin
     from firebase_admin import credentials
@@ -28,11 +52,20 @@ def _firebase_app():
     with _init_lock:
         if firebase_admin._apps:
             return firebase_admin.get_app()
-        if settings.firebase_credentials_file:
+
+        if settings.firebase_credentials_json:
+            cred = credentials.Certificate(
+                _parse_service_account(settings.firebase_credentials_json)
+            )
+        elif settings.firebase_credentials_file:
             cred = credentials.Certificate(settings.firebase_credentials_file)
-            return firebase_admin.initialize_app(cred)
-        # Falls back to Application Default Credentials.
-        return firebase_admin.initialize_app()
+        else:
+            cred = None  # Application Default Credentials
+
+        options = {"projectId": settings.firebase_project_id} if settings.firebase_project_id else None
+        if cred is None:
+            return firebase_admin.initialize_app(options=options)
+        return firebase_admin.initialize_app(cred, options)
 
 
 def _verify_firebase_token(token: str) -> dict:
