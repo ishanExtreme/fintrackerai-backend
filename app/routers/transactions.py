@@ -60,9 +60,20 @@ def create_transaction(
 def list_transactions(
     month: str | None = Query(default=None, description="Filter by 'YYYY-MM'"),
     category_id: int | None = Query(default=None),
+    include_children: bool = Query(
+        default=False,
+        description="If true, also include transactions for sub-categories "
+        "of the given category_id",
+    ),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
+    """List transactions with optional filters.
+    
+    - ``month``: filter by 'YYYY-MM'
+    - ``category_id``: filter by category (when combined with 
+      ``include_children=true``, includes sub-categories too)
+    """
     q = db.query(models.Transaction).filter(models.Transaction.user_id == user.id)
     if month:
         try:
@@ -73,7 +84,11 @@ def list_transactions(
             models.Transaction.occurred_on >= start, models.Transaction.occurred_on < end
         )
     if category_id is not None:
-        q = q.filter(models.Transaction.category_id == category_id)
+        if include_children:
+            ids = descendant_category_ids(db, user.id, category_id)
+            q = q.filter(models.Transaction.category_id.in_(list(ids)))
+        else:
+            q = q.filter(models.Transaction.category_id == category_id)
     return q.order_by(models.Transaction.occurred_on.desc(), models.Transaction.id.desc()).all()
 
 

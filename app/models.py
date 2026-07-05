@@ -81,6 +81,8 @@ class Transaction(Base):
     amount: Mapped[float] = mapped_column(Float, nullable=False)
     currency: Mapped[str] = mapped_column(String, default="INR")
     occurred_on: Mapped[dt.date] = mapped_column(Date, default=dt.date.today, index=True)
+    subtitle: Mapped[str | None] = mapped_column(String(120), nullable=True)  # short label shown in UI
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)  # longer optional detail
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     source: Mapped[str] = mapped_column(String, default="manual")  # chat | sms | manual
     raw_ref: Mapped[str | None] = mapped_column(String, nullable=True)  # e.g. SMS hash for dedupe

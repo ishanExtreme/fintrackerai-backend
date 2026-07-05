@@ -58,6 +58,8 @@ class TransactionBase(BaseModel):
     category_id: int | None = None
     currency: str = "INR"
     occurred_on: dt.date | None = None
+    subtitle: str | None = Field(default=None, max_length=120)
+    description: str | None = None
     note: str | None = None
 
 
@@ -70,6 +72,8 @@ class TransactionUpdate(BaseModel):
     category_id: int | None = None
     currency: str | None = None
     occurred_on: dt.date | None = None
+    subtitle: str | None = Field(default=None, max_length=120)
+    description: str | None = None
     note: str | None = None
 
 
@@ -81,6 +85,8 @@ class TransactionOut(BaseModel):
     amount: float
     currency: str
     occurred_on: dt.date
+    subtitle: str | None
+    description: str | None
     note: str | None
     source: str
 
