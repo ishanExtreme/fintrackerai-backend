@@ -11,6 +11,8 @@ RUN pip install --no-cache-dir uv
 COPY pyproject.toml README.md alembic.ini ./
 COPY app ./app
 COPY alembic/ ./alembic/
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 RUN uv pip install --system --no-cache .
 
 # Run as a non-root user.
@@ -20,5 +22,5 @@ USER appuser
 
 EXPOSE 8000
 
-# Run database migrations on startup, then start the server.
-CMD ["sh", "-c", "uv run alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+ENTRYPOINT ["docker-entrypoint.sh"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
