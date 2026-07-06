@@ -4,16 +4,20 @@ set -e
 # If alembic_version table doesn't exist (first run), stamp to head so that
 # subsequent `alembic upgrade head` only applies new migration scripts.
 python3 -c "
-import os, subprocess, sys, re
+import os, subprocess, sys
 
 url = os.environ.get('DATABASE_URL', '')
 if not url:
     print('WARNING: DATABASE_URL not set, skipping migration check')
     sys.exit(0)
 
-# psycopg2.connect does not understand 'postgresql+psycopg2://' scheme;
-# strip the '+psycopg2' suffix so psycopg2 can parse it.
-clean_url = re.sub(r'\+psycopg2$', '', url)
+# Use SQLAlchemy to parse the URL and reconstruct a psycopg2-compatible one.
+# This correctly handles passwords with special chars like '@' (encoded as %40).
+from sqlalchemy.engine.url import make_url
+parsed = make_url(url)
+# Rebuild with plain 'postgresql' scheme (psycopg2 doesn't understand '+psycopg2')
+from sqlalchemy.dialects import postgresql
+clean_url = parsed.set(drivername='postgresql+psycopg2').render()
 
 import psycopg2
 conn = psycopg2.connect(clean_url)
