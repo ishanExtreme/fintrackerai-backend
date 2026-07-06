@@ -8,9 +8,9 @@ WORKDIR /srv
 # Install uv (same tooling as local dev) and use it to install the project.
 RUN pip install --no-cache-dir uv
 
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md alembic.ini ./
 COPY app ./app
-COPY alembic.ini alembic/ ./alembic/
+COPY alembic/ ./alembic/
 RUN uv pip install --system --no-cache .
 
 # Run as a non-root user.
