@@ -1,41 +1,40 @@
 #!/usr/bin/env sh
 set -e
 
-# If alembic_version table doesn't exist (first run), stamp to head so that
-# subsequent `alembic upgrade head` only applies new migration scripts.
+# Bring the schema to Alembic head before starting the app.
+#
+# `alembic upgrade head` is correct and idempotent for a fresh database (it
+# creates alembic_version and applies every migration) and for an already
+# migrated one (it applies only what's new). The one case it can't handle is a
+# database whose tables were created outside Alembic (a prior create_all
+# fallback) and therefore has no alembic_version row: `upgrade` would try to
+# CREATE tables that already exist. For that case we detect the pre-Alembic
+# schema and `stamp head` to adopt it, then upgrade normally.
+#
+# We inspect the DB through the app's own SQLAlchemy engine so URL parsing,
+# driver selection, and special characters in the password are all handled by
+# SQLAlchemy — no hand-rolled URL rebuilding.
 python3 -c "
-import os, subprocess, sys
+import sys
 
-url = os.environ.get('DATABASE_URL', '')
-if not url:
-    print('WARNING: DATABASE_URL not set, skipping migration check')
-    sys.exit(0)
+from sqlalchemy import inspect
 
-# Use SQLAlchemy to parse the URL and reconstruct a psycopg2-compatible one.
-# This correctly handles passwords with special chars like '@' (encoded as %40).
-from sqlalchemy.engine.url import make_url
-parsed = make_url(url)
-# Rebuild with plain 'postgresql' scheme (psycopg2 doesn't understand '+psycopg2')
-from sqlalchemy.dialects import postgresql
-clean_url = parsed.set(drivername='postgresql+psycopg2').render()
+from app.db import engine
 
-import psycopg2
-conn = psycopg2.connect(clean_url)
-cur = conn.cursor()
 try:
-    cur.execute(\"SELECT 1 FROM pg_class WHERE relname='alembic_version'\")
-    exists = cur.fetchone() is not None
-finally:
-    cur.close()
-    conn.close()
+    tables = set(inspect(engine).get_table_names())
+except Exception as exc:
+    print(f'ERROR: could not connect to the database: {exc}', file=sys.stderr)
+    sys.exit(1)
 
-if not exists:
-    print('INFO: alembic_version not found – stamping to head')
-    subprocess.check_call(['uv', 'run', 'alembic', 'stamp', 'head'])
+if tables and 'alembic_version' not in tables:
+    print('INFO: existing pre-Alembic schema found - stamping to head')
+    import subprocess
+    subprocess.check_call(['alembic', 'stamp', 'head'])
 else:
-    print('INFO: alembic_version exists – running upgrade')
+    print('INFO: database is Alembic-managed (or empty) - upgrade will handle it')
 "
 
-uv run alembic upgrade head
+alembic upgrade head
 
 exec "$@"
