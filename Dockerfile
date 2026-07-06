@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir uv
 
 COPY pyproject.toml README.md ./
 COPY app ./app
+COPY alembic.ini alembic/ ./alembic/
 RUN uv pip install --system --no-cache .
 
 # Run as a non-root user.
@@ -19,4 +20,5 @@ USER appuser
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run database migrations on startup, then start the server.
+CMD ["sh", "-c", "uv run alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
