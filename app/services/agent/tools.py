@@ -13,6 +13,7 @@ from langchain_core.tools import tool
 from sqlalchemy import func
 
 from ... import models
+from ...services.transactions import search_transactions
 from ...utils import descendant_category_ids, month_range
 from .runtime import current_db, current_today, current_user_id, record_event
 
@@ -391,3 +392,34 @@ def query_investments(month: str | None = None, year: int | None = None) -> str:
         .scalar()
     ) or 0.0
     return f"You invested ₹{_fmt(total)} in {y}."
+
+
+@tool
+def search_expenses(
+    category: str | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    description: str | None = None,
+) -> str:
+    """Search past expenses by category, date range, and/or description keyword.
+
+    category: optional category name (includes sub-categories).
+    from_date: optional start date 'YYYY-MM-DD' (inclusive).
+    to_date: optional end date 'YYYY-MM-DD' (inclusive).
+        Must not exceed 31 days from from_date. Defaults to current month
+        if neither is provided.
+    description: optional keyword to match against the description and
+        subtitle fields (case-insensitive partial match).
+
+    Returns a formatted list of matching expenses with date, category,
+    amount, subtitle, and description.
+    """
+    db, uid = current_db(), current_user_id()
+    return search_transactions(
+        db=db,
+        user_id=uid,
+        category=category,
+        from_date=from_date,
+        to_date=to_date,
+        description=description,
+    )
