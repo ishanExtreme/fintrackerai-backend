@@ -1,3 +1,4 @@
+import asyncio
 import datetime as dt
 import logging
 
@@ -6,7 +7,12 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..auth import get_current_user
+from ..crypto import resolve_sms_llm_key, resolve_sms_llm_model
 from ..db import get_db
+from ..services import capture_rules
+from ..services.agent.runtime import request_scope
+from ..services.agent.tools import _resolve_or_create_category as resolve_or_create_category
+from ..services.sms_capture import extract_with_context
 from ..utils import descendant_category_ids, month_range
 
 logger = logging.getLogger("transactions")
@@ -255,14 +261,12 @@ async def capture_sms(
 
     Flow:
     1. Dedupe on ``raw_hash`` → ``status="duplicate"``
-    2. LLM extract → if ``is_expense=False`` → ``status="skipped"``
+    2. LLM extract (own SMS key, cheaper model) → ``is_expense=False`` → ``skipped``
     3. Resolve/create category; insert Transaction → ``status="created"``
+
+    Returns 200 in all cases (including ``skipped`` on no-key / extraction
+    failure) so the mobile queue drains the item instead of retrying forever.
     """
-    import asyncio
-
-    from ..config import get_settings
-    from ..services.sms_capture import extract_with_context
-
     # 1. Dedupe on raw_hash
     existing = (
         db.query(models.Transaction)
@@ -278,21 +282,27 @@ async def capture_sms(
             transaction=schemas.TransactionOut.model_validate(existing),
         )
 
-    # 2. LLM extraction
+    # 2. LLM extraction — resolve the user's dedicated SMS key + model, then run
+    #    the (blocking) extractor in a worker thread inside a request scope so
+    #    get_model() picks up the key. to_thread propagates the contextvars.
+    sms_key = resolve_sms_llm_key(db, user)
+    if not sms_key:
+        logger.warning("SMS capture skipped for user %s: no LLM key available", user.id)
+        return schemas.SmsCaptureResult(status="skipped")
+    sms_model = resolve_sms_llm_model(db, user)
+
     try:
-        settings = get_settings()
-        extraction = await asyncio.to_thread(
-            extract_with_context,
-            db=db,
-            user_id=user.id,
-            sms_text=payload.sms_text,
-            sender=payload.sender,
-            received_at=payload.received_at,
-            lat=payload.lat,
-            lng=payload.lng,
-            place_label=payload.place_label,
-            model_override=settings.sms_llm_model,
-        )
+        with request_scope(db=db, user_id=user.id, llm_key=sms_key):
+            extraction = await asyncio.to_thread(
+                extract_with_context,
+                db=db,
+                user_id=user.id,
+                sms_text=payload.sms_text,
+                sender=payload.sender,
+                received_at=payload.received_at,
+                place_label=payload.place_label,
+                model_override=sms_model,
+            )
     except Exception as e:
         logger.error("SMS extraction failed: %s", e)
         return schemas.SmsCaptureResult(status="skipped")
@@ -300,21 +310,32 @@ async def capture_sms(
     if not extraction.get("is_expense"):
         return schemas.SmsCaptureResult(status="skipped")
 
-    # 3. Resolve/create category
-    from ..services.sms_capture import SmsExpense
-
+    # 3. Resolve/create category (reuse the agent's resolver for parity).
     category_name = extraction["category"]
     parent_name = extraction.get("parent_category")
-
-    if category_name == "Uncategorized":
+    if not category_name or category_name == "Uncategorized":
         category_id = None
     else:
-        cat = _resolve_or_create_category(
-            db, user.id, category_name, parent_name
-        )
+        cat = resolve_or_create_category(db, user.id, category_name, parent_name)
         category_id = cat.id
 
     occurred_on = extraction.get("occurred_on") or dt.date.today()
+    counterparty = extraction.get("counterparty")
+    subtitle = extraction.get("subtitle")
+    location_label = payload.place_label
+
+    # 4. "Remember" rules — pre-correct known payees/places (still reviewed=False).
+    overrides = capture_rules.resolve_overrides(
+        db, user.id, counterparty=counterparty, lat=payload.lat, lng=payload.lng
+    )
+    if overrides.get("category_id") is not None:
+        category_id = overrides["category_id"]  # payee rule is authoritative
+    elif category_id is None and overrides.get("location_category_id") is not None:
+        category_id = overrides["location_category_id"]  # location fallback
+    if overrides.get("subtitle"):
+        subtitle = overrides["subtitle"]
+    if overrides.get("location_label"):
+        location_label = overrides["location_label"]
 
     txn = models.Transaction(
         user_id=user.id,
@@ -322,7 +343,7 @@ async def capture_sms(
         amount=extraction["amount"],
         currency="INR",
         occurred_on=occurred_on,
-        subtitle=extraction.get("subtitle"),
+        subtitle=subtitle,
         description=extraction.get("description"),
         note=extraction.get("note"),
         source="sms",
@@ -331,7 +352,8 @@ async def capture_sms(
         reviewed=False,
         lat=payload.lat,
         lng=payload.lng,
-        location_label=payload.place_label,
+        location_label=location_label,
+        counterparty=counterparty,
     )
     db.add(txn)
     db.commit()
@@ -390,56 +412,3 @@ def review_batch(
 
     db.commit()
     return schemas.ReviewBatchResult(updated=count)
-
-
-def _resolve_or_create_category(db, uid, name, parent_name=None):
-    """Resolve or create a category (mirrors tools._resolve_or_create_category)."""
-    from .. import models as app_models
-
-    parent_id = None
-    if parent_name:
-        parent = (
-            db.query(app_models.Category)
-            .filter(
-                app_models.Category.user_id == uid,
-                app_models.Category.name == parent_name.strip(),
-            )
-            .first()
-        )
-        if not parent:
-            parent = app_models.Category(
-                user_id=uid,
-                name=parent_name.strip(),
-                type="expense",
-                tags=[],
-                created_by="llm",
-            )
-            db.add(parent)
-            db.flush()
-        parent_id = parent.id
-
-    cat = (
-        db.query(app_models.Category)
-        .filter(
-            app_models.Category.user_id == uid,
-            app_models.Category.name == name.strip(),
-            *(
-                [app_models.Category.parent_id == parent_id]
-                if parent_id is not None
-                else [app_models.Category.parent_id.is_(None)]
-            ),
-        )
-        .first()
-    )
-    if not cat:
-        cat = app_models.Category(
-            user_id=uid,
-            name=name.strip(),
-            parent_id=parent_id,
-            type="expense",
-            tags=[],
-            created_by="llm",
-        )
-        db.add(cat)
-        db.flush()
-    return cat

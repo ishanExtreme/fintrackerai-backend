@@ -10,6 +10,7 @@ from .db import Base, engine
 from .logging_config import setup_logging
 from .routers import (
     budgets,
+    capture_rules,
     categories,
     chat,
     dashboard,
@@ -68,6 +69,7 @@ def create_app() -> FastAPI:
 
     app.include_router(categories.router)
     app.include_router(transactions.router)
+    app.include_router(capture_rules.router)
     app.include_router(budgets.router)
     app.include_router(investments.router)
     app.include_router(dashboard.router)

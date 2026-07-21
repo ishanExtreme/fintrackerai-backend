@@ -49,6 +49,12 @@ class SmsExpense(BaseModel):
         None,
         description="Parent category name if the extracted category should be nested.",
     )
+    counterparty: str | None = Field(
+        None,
+        description="The payee/merchant identifier from the SMS — a UPI VPA "
+        "(e.g. 'name@okhdfc'), merchant name, or payee. Prefer the UPI VPA when "
+        "present. Used to recognise recurring payees. Null if none.",
+    )
     subtitle: str | None = Field(
         None,
         description="Short label shown in UI (e.g. 'Dinner at Toit', 'UPI - Amazon').",
@@ -89,6 +95,7 @@ Rules:
 - Resolve relative dates (today, yesterday) against today's date.
 - Set confidence based on how clear the extraction is.
 - subtitle should be a short label like "Dinner at Toit" or "UPI - Amazon Pay".
+- counterparty: extract the payee — prefer the UPI VPA (e.g. "name@okhdfc") if present, else the merchant/payee name.
 - If the SMS is not about a financial transaction at all, set is_expense=false.
 """
 
@@ -100,7 +107,7 @@ Extract expense data from the following SMS:
 
 **Sender:** {sender}
 **Received:** {received_at}
-**Location:** {place_label} ({lat}, {lng})
+**Location:** {place_label}
 
 **Today's date:** {today}
 
@@ -127,21 +134,21 @@ def _parse_date_str(s: str | None, today: dt.date) -> dt.date | None:
         return None
 
 
-async def extract_with_context(
+def extract_with_context(
     *,
     db: Session,
     user_id: int,
     sms_text: str,
     sender: str | None = None,
     received_at: dt.datetime | None = None,
-    lat: float | None = None,
-    lng: float | None = None,
     place_label: str | None = None,
     model_override: str | None = None,
 ) -> dict:
     """Full extraction with user context (categories, DB session).
 
-    This is the primary entry point called from the API endpoint.
+    Synchronous and blocking (``model.invoke`` is a blocking call); the endpoint
+    offloads it to a worker thread. Must run inside ``runtime.request_scope`` so
+    ``get_model`` picks up the caller's resolved LLM key from the context.
     """
     today = dt.date.today()
 
@@ -153,13 +160,14 @@ async def extract_with_context(
     structured_model = model.with_structured_output(SmsExpense)
 
     # Build prompt
+    # Note: raw lat/lng are intentionally NOT sent to the LLM — coordinates are
+    # noise to the model. The reverse-geocoded place_label carries the useful
+    # signal; the coords are still persisted on the transaction row by the caller.
     prompt = _USER_PROMPT_TEMPLATE.format(
         sms_text=sms_text,
         sender=sender or "unknown",
         received_at=received_at.isoformat() if received_at else "unknown",
         place_label=place_label or "unknown",
-        lat=lat if lat is not None else "unknown",
-        lng=lng if lng is not None else "unknown",
         today=today.isoformat(),
         categories=categories_ctx,
     )
@@ -172,6 +180,7 @@ async def extract_with_context(
         "direction": result.direction,
         "category": result.category,
         "parent_category": result.parent_category,
+        "counterparty": result.counterparty,
         "subtitle": result.subtitle,
         "description": result.description,
         "note": result.note,

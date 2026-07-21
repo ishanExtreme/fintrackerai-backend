@@ -96,6 +96,7 @@ class TransactionOut(BaseModel):
     lat: float | None
     lng: float | None
     location_label: str | None
+    counterparty: str | None
 
 
 class TransactionDeleteResult(BaseModel):
@@ -148,6 +149,43 @@ class ReviewBatchRequest(BaseModel):
 
 class ReviewBatchResult(BaseModel):
     updated: int  # number of transactions marked as reviewed
+
+
+# --------------------------- Capture rules ("remember") ---------------------------
+class CaptureRuleIn(BaseModel):
+    """Create a 'remember' rule from a structured form.
+
+    kind='payee' needs match_value (+ category_id/subtitle to apply).
+    kind='location' needs lat/lng (+ location_name; category_id optional).
+    """
+
+    kind: str = Field(..., pattern="^(payee|location)$")
+    match_value: str | None = Field(default=None, max_length=200)
+    lat: float | None = None
+    lng: float | None = None
+    radius_m: float | None = Field(default=None, gt=0)
+    location_name: str | None = Field(default=None, max_length=120)
+    category_id: int | None = None
+    subtitle: str | None = Field(default=None, max_length=120)
+
+
+class CaptureRuleOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    kind: str
+    match_value: str | None
+    lat: float | None
+    lng: float | None
+    radius_m: float | None
+    location_name: str | None
+    category_id: int | None
+    subtitle: str | None
+
+
+class CaptureRuleResult(BaseModel):
+    rule: CaptureRuleOut
+    applied: int  # existing unreviewed SMS captures updated by this rule
 
 
 # ----------------------------- Budgets -----------------------------
@@ -245,7 +283,16 @@ class LlmKeyIn(BaseModel):
     provider: str = "google_genai"
 
 
+class SmsLlmKeyIn(BaseModel):
+    """Set the dedicated SMS-capture LLM key (+ optional cheaper model)."""
+
+    api_key: str = Field(..., min_length=1)
+    provider: str = "google_genai"
+    model: str | None = None  # optional 'provider:model' override
+
+
 class LlmKeyStatus(BaseModel):
     configured: bool  # user has stored their own key
     provider: str | None = None
     using: str  # "user" | "shared" | "none"
+    model: str | None = None  # SMS key only: the effective model override
