@@ -1,4 +1,5 @@
 import datetime as dt
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -7,6 +8,8 @@ from .. import models, schemas
 from ..auth import get_current_user
 from ..db import get_db
 from ..utils import descendant_category_ids, month_range
+
+logger = logging.getLogger("transactions")
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -65,6 +68,14 @@ def list_transactions(
         description="If true, also include transactions for sub-categories "
         "of the given category_id",
     ),
+    source: str | None = Query(
+        default=None,
+        description="Filter by source ('chat', 'sms', 'manual')",
+    ),
+    reviewed: bool | None = Query(
+        default=None,
+        description="Filter by reviewed status (true = reviewed, false = unreviewed)",
+    ),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
@@ -89,6 +100,10 @@ def list_transactions(
             q = q.filter(models.Transaction.category_id.in_(list(ids)))
         else:
             q = q.filter(models.Transaction.category_id == category_id)
+    if source is not None:
+        q = q.filter(models.Transaction.source == source)
+    if reviewed is not None:
+        q = q.filter(models.Transaction.reviewed == reviewed)
     return q.order_by(models.Transaction.occurred_on.desc(), models.Transaction.id.desc()).all()
 
 
@@ -228,3 +243,203 @@ def ingest_sms(
     return schemas.SmsIngestResult(
         status="created", transaction=schemas.TransactionOut.model_validate(txn)
     )
+
+
+@router.post("/capture", response_model=schemas.SmsCaptureResult)
+async def capture_sms(
+    payload: schemas.SmsCapture,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Capture an expense from raw SMS text using LLM extraction.
+
+    Flow:
+    1. Dedupe on ``raw_hash`` → ``status="duplicate"``
+    2. LLM extract → if ``is_expense=False`` → ``status="skipped"``
+    3. Resolve/create category; insert Transaction → ``status="created"``
+    """
+    import asyncio
+
+    from ..config import get_settings
+    from ..services.sms_capture import extract_with_context
+
+    # 1. Dedupe on raw_hash
+    existing = (
+        db.query(models.Transaction)
+        .filter(
+            models.Transaction.user_id == user.id,
+            models.Transaction.raw_ref == payload.raw_hash,
+        )
+        .first()
+    )
+    if existing:
+        return schemas.SmsCaptureResult(
+            status="duplicate",
+            transaction=schemas.TransactionOut.model_validate(existing),
+        )
+
+    # 2. LLM extraction
+    try:
+        settings = get_settings()
+        extraction = await asyncio.to_thread(
+            extract_with_context,
+            db=db,
+            user_id=user.id,
+            sms_text=payload.sms_text,
+            sender=payload.sender,
+            received_at=payload.received_at,
+            lat=payload.lat,
+            lng=payload.lng,
+            place_label=payload.place_label,
+            model_override=settings.sms_llm_model,
+        )
+    except Exception as e:
+        logger.error("SMS extraction failed: %s", e)
+        return schemas.SmsCaptureResult(status="skipped")
+
+    if not extraction.get("is_expense"):
+        return schemas.SmsCaptureResult(status="skipped")
+
+    # 3. Resolve/create category
+    from ..services.sms_capture import SmsExpense
+
+    category_name = extraction["category"]
+    parent_name = extraction.get("parent_category")
+
+    if category_name == "Uncategorized":
+        category_id = None
+    else:
+        cat = _resolve_or_create_category(
+            db, user.id, category_name, parent_name
+        )
+        category_id = cat.id
+
+    occurred_on = extraction.get("occurred_on") or dt.date.today()
+
+    txn = models.Transaction(
+        user_id=user.id,
+        category_id=category_id,
+        amount=extraction["amount"],
+        currency="INR",
+        occurred_on=occurred_on,
+        subtitle=extraction.get("subtitle"),
+        description=extraction.get("description"),
+        note=extraction.get("note"),
+        source="sms",
+        raw_ref=payload.raw_hash,
+        confidence=extraction.get("confidence"),
+        reviewed=False,
+        lat=payload.lat,
+        lng=payload.lng,
+        location_label=payload.place_label,
+    )
+    db.add(txn)
+    db.commit()
+    db.refresh(txn)
+
+    return schemas.SmsCaptureResult(
+        status="created", transaction=schemas.TransactionOut.model_validate(txn)
+    )
+
+
+@router.post("/review-batch", response_model=schemas.ReviewBatchResult)
+def review_batch(
+    payload: schemas.ReviewBatchRequest,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Mark SMS transactions as reviewed in bulk.
+
+    Accepts either:
+    - ``ids``: specific transaction IDs to mark reviewed
+    - ``month``: all unreviewed SMS transactions for a given month
+    """
+    if payload.ids:
+        count = (
+            db.query(models.Transaction)
+            .filter(
+                models.Transaction.id.in_(payload.ids),
+                models.Transaction.user_id == user.id,
+                models.Transaction.source == "sms",
+            )
+            .update({models.Transaction.reviewed: True}, synchronize_session=False)
+        )
+    elif payload.month:
+        try:
+            start, end = month_range(payload.month)
+        except (ValueError, IndexError):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "month must be 'YYYY-MM'"
+            )
+        count = (
+            db.query(models.Transaction)
+            .filter(
+                models.Transaction.user_id == user.id,
+                models.Transaction.source == "sms",
+                models.Transaction.reviewed == False,  # noqa: E712
+                models.Transaction.occurred_on >= start,
+                models.Transaction.occurred_on < end,
+            )
+            .update({models.Transaction.reviewed: True}, synchronize_session=False)
+        )
+    else:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Provide either 'ids' or 'month'",
+        )
+
+    db.commit()
+    return schemas.ReviewBatchResult(updated=count)
+
+
+def _resolve_or_create_category(db, uid, name, parent_name=None):
+    """Resolve or create a category (mirrors tools._resolve_or_create_category)."""
+    from .. import models as app_models
+
+    parent_id = None
+    if parent_name:
+        parent = (
+            db.query(app_models.Category)
+            .filter(
+                app_models.Category.user_id == uid,
+                app_models.Category.name == parent_name.strip(),
+            )
+            .first()
+        )
+        if not parent:
+            parent = app_models.Category(
+                user_id=uid,
+                name=parent_name.strip(),
+                type="expense",
+                tags=[],
+                created_by="llm",
+            )
+            db.add(parent)
+            db.flush()
+        parent_id = parent.id
+
+    cat = (
+        db.query(app_models.Category)
+        .filter(
+            app_models.Category.user_id == uid,
+            app_models.Category.name == name.strip(),
+            *(
+                [app_models.Category.parent_id == parent_id]
+                if parent_id is not None
+                else [app_models.Category.parent_id.is_(None)]
+            ),
+        )
+        .first()
+    )
+    if not cat:
+        cat = app_models.Category(
+            user_id=uid,
+            name=name.strip(),
+            parent_id=parent_id,
+            type="expense",
+            tags=[],
+            created_by="llm",
+        )
+        db.add(cat)
+        db.flush()
+    return cat

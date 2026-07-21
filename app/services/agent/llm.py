@@ -34,7 +34,14 @@ def _build_model(model: str, api_key: str, timeout: float, max_retries: int):
     )
 
 
-def get_model():
+def get_model(model: str | None = None):
+    """Get the LLM model instance.
+
+    Args:
+        model: Optional model override (e.g. SMS_LLM_MODEL). Falls back to
+               settings.llm_model when None or empty.
+    """
     settings = get_settings()
+    model_name = model if model else settings.llm_model
     key = current_llm_key() or settings.llm_api_key or ""
-    return _build_model(settings.llm_model, key, settings.llm_timeout_s, settings.llm_max_retries)
+    return _build_model(model_name, key, settings.llm_timeout_s, settings.llm_max_retries)

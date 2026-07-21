@@ -75,6 +75,8 @@ class TransactionUpdate(BaseModel):
     subtitle: str | None = Field(default=None, max_length=120)
     description: str | None = None
     note: str | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    reviewed: bool | None = None
 
 
 class TransactionOut(BaseModel):
@@ -89,6 +91,11 @@ class TransactionOut(BaseModel):
     description: str | None
     note: str | None
     source: str
+    confidence: float | None
+    reviewed: bool
+    lat: float | None
+    lng: float | None
+    location_label: str | None
 
 
 class TransactionDeleteResult(BaseModel):
@@ -113,6 +120,34 @@ class SmsIngest(BaseModel):
 class SmsIngestResult(BaseModel):
     status: str  # created | duplicate | skipped
     transaction: TransactionOut | None = None
+
+
+# ----------------------------- SMS Capture -----------------------------
+class SmsCapture(BaseModel):
+    """Raw SMS capture payload from the mobile app."""
+
+    sms_text: str = Field(..., min_length=1)
+    sender: str | None = None
+    received_at: dt.datetime | None = None
+    lat: float | None = None
+    lng: float | None = None
+    place_label: str | None = None
+    raw_hash: str = Field(..., min_length=1)  # dedupe key
+
+
+class SmsCaptureResult(BaseModel):
+    status: str  # created | duplicate | skipped
+    transaction: TransactionOut | None = None
+
+
+class ReviewBatchRequest(BaseModel):
+    """Batch review accept for SMS captures."""
+    ids: list[int] | None = None  # specific transaction IDs
+    month: str | None = None  # all SMS transactions for a month
+
+
+class ReviewBatchResult(BaseModel):
+    updated: int  # number of transactions marked as reviewed
 
 
 # ----------------------------- Budgets -----------------------------

@@ -86,6 +86,11 @@ class Transaction(Base):
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     source: Mapped[str] = mapped_column(String, default="manual")  # chat | sms | manual
     raw_ref: Mapped[str | None] = mapped_column(String, nullable=True)  # e.g. SMS hash for dedupe
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)  # LLM extraction confidence (0..1)
+    reviewed: Mapped[bool] = mapped_column(default=False)  # accepted from review queue
+    lat: Mapped[float | None] = mapped_column(Float, nullable=True)  # capture-time GPS
+    lng: Mapped[float | None] = mapped_column(Float, nullable=True)  # capture-time GPS
+    location_label: Mapped[str | None] = mapped_column(String, nullable=True)  # reverse-geocoded place
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     __table_args__ = (

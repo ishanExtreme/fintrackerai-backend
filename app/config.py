@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     fernet_key: str | None = None
 
+    # SMS capture: separate LLM model (cheaper/faster) for structured extraction.
+    # Falls back to llm_model when unset. Same 'provider:model' string format.
+    sms_llm_model: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:
