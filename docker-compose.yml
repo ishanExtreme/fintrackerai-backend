@@ -25,13 +25,17 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg2://finance:finance@db:5432/finance
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-*}
       AUTH_MODE: ${AUTH_MODE:-firebase}
       FIREBASE_CREDENTIALS_FILE: ${FIREBASE_CREDENTIALS_FILE:-}
+      FIREBASE_CREDENTIALS_JSON: ${FIREBASE_CREDENTIALS_JSON:-}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
       LLM_MODEL: ${LLM_MODEL:-google_genai:gemini-3.5-flash}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_TIMEOUT_S: ${LLM_TIMEOUT_S:-45}
       LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-2}
       AGENT_RECURSION_LIMIT: ${AGENT_RECURSION_LIMIT:-12}
+      SMS_LLM_MODEL: ${SMS_LLM_MODEL:-}
       FERNET_KEY: ${FERNET_KEY:-}
     ports:
       - "8000:8000"

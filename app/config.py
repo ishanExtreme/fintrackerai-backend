@@ -9,6 +9,11 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = "INFO"  # DEBUG shows full LLM payloads (system prompt + history)
 
+    # CORS: comma-separated list of allowed origins, or "*" for any (default).
+    # The mobile app talks to the API directly (not from a browser), so the
+    # default is permissive; lock this down if you expose a web frontend.
+    cors_allow_origins: str = "*"
+
     # Database
     database_url: str = "sqlite:///./finance.db"
 

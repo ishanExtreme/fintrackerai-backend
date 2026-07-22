@@ -58,11 +58,15 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="Finance Tracker API", version="0.1.0")
 
-    # Mobile app runs on-device; allow cross-origin during development.
+    # CORS. The mobile app calls the API directly (not from a browser), so the
+    # default is "*". Set CORS_ALLOW_ORIGINS to a comma-separated allowlist to
+    # lock it down. Auth is Bearer-token (no cookies), so we don't enable
+    # credentialed CORS — a wildcard origin with credentials is invalid anyway.
+    origins = [o.strip() for o in get_settings().cors_allow_origins.split(",") if o.strip()]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
+        allow_origins=origins or ["*"],
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )
