@@ -81,8 +81,7 @@ def delete_llm_key(
     return None
 
 
-# ------------------------- SMS-capture LLM key ------------------------- #
-# A separate key/model for the SMS extraction agent (Phase 5), so it can run a
+# A separate key/model for the SMS extraction agent, so it can run a
 # cheaper/faster model than the conversational agent. Falls back to the chat
 # key + SMS_LLM_MODEL/LLM_MODEL when unset (see crypto.resolve_sms_llm_*).
 

@@ -132,7 +132,7 @@ class Investment(Base):
 
 
 class LlmCredential(Base):
-    """Per-user bring-your-own LLM key, encrypted at rest (Phase 2 uses this)."""
+    """Per-user bring-your-own LLM key, encrypted at rest."""
 
     __tablename__ = "llm_credentials"
 
@@ -146,7 +146,7 @@ class LlmCredential(Base):
 
 
 class SmsLlmCredential(Base):
-    """Per-user LLM key for the SMS-capture agent (Phase 5).
+    """Per-user LLM key for the SMS-capture agent.
 
     Kept as a *separate* row from the chat ``LlmCredential`` so a user can point
     SMS extraction at a cheaper/faster (or different-provider) model without

@@ -1,4 +1,4 @@
-"""Tests for Phase 5 SMS auto-capture: /transactions/capture, /review-batch,
+"""Tests for SMS auto-capture: /transactions/capture, /review-batch,
 and the dedicated SMS LLM key endpoints.
 
 The LLM structured-output call is faked so no network/key is needed; we assert

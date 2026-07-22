@@ -18,7 +18,6 @@ from ...utils import descendant_category_ids, month_range
 from .runtime import current_db, current_today, current_user_id, record_event
 
 
-# ------------------------------- helpers ------------------------------- #
 def _current_month() -> str:
     return current_today().strftime("%Y-%m")
 
@@ -166,7 +165,6 @@ def _budget_warning_text(db, uid, category_id, month) -> str:
     return ""
 
 
-# ------------------------------- tools ------------------------------- #
 @tool
 def add_expense(
     amount: float,

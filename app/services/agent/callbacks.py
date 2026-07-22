@@ -25,7 +25,6 @@ class LoggingCallbackHandler(BaseCallbackHandler):
         # run_id -> (label, start_time)
         self._starts: dict[UUID, tuple[str, float]] = {}
 
-    # --- LLM / chat model turns ------------------------------------------- #
     def on_chat_model_start(
         self, serialized: dict[str, Any], messages: list, *, run_id: UUID, **kwargs: Any
     ) -> None:
@@ -59,7 +58,6 @@ class LoggingCallbackHandler(BaseCallbackHandler):
         _, start = self._starts.pop(run_id, ("llm", time.perf_counter()))
         logger.error("✗ LLM FAILED in %s: %s", _ms(time.perf_counter() - start), error)
 
-    # --- Tool calls -------------------------------------------------------- #
     def on_tool_start(
         self, serialized: dict[str, Any], input_str: str, *, run_id: UUID, **kwargs: Any
     ) -> None:

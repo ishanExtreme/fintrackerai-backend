@@ -61,38 +61,30 @@ def search_transactions(
     """
     today = dt.date.today()
 
-    # Parse dates
     from_dt = _parse_date(from_date)
     to_dt = _parse_date(to_date)
 
-    # Default to current month if no dates provided
     if from_dt is None and to_dt is None:
         start, _ = month_range(today.strftime("%Y-%m"))
         from_dt = start
         to_dt = today
-    # If only one date is given, default the other
     elif from_dt is None and to_dt is not None:
-        # to_date given, default from_date to 30 days before
         from_dt = to_dt - dt.timedelta(days=30)
     elif to_dt is None and from_dt is not None:
-        # from_date given, default to_date to 30 days after
         to_dt = from_dt + dt.timedelta(days=30)
 
-    # Ensure date range is not more than 31 days
     if (to_dt - from_dt).days > 31:
         return (
             "Your date range exceeds 31 days. Please narrow it to one month "
             "(e.g., from 2026-07-01 to 2026-07-31)."
         )
 
-    # Build query
     q = db.query(models.Transaction).filter(
         models.Transaction.user_id == user_id,
         models.Transaction.occurred_on >= from_dt,
         models.Transaction.occurred_on <= to_dt,
     )
 
-    # Apply category filter (includes sub-categories)
     if category:
         cat = _find_category(db, user_id, category)
         if cat:
@@ -100,7 +92,6 @@ def search_transactions(
             q = q.filter(models.Transaction.category_id.in_(list(cat_ids)))
         # If category not found, skip category filter (search all)
 
-    # Apply description/keyword filter
     if description:
         keyword = f"%{description.strip()}%"
         q = q.filter(
@@ -120,7 +111,6 @@ def search_transactions(
             scope = f" in {category}"
         return f"No expenses found{scope}."
 
-    # Format results
     total = sum(e.amount for e in expenses)
     lines = [
         f"You have {len(expenses)} expense{'s' if len(expenses) != 1 else ''}"

@@ -27,7 +27,7 @@ def create_category(
     user: models.User = Depends(get_current_user),
 ):
     if payload.parent_id is not None:
-        _get_owned_category(db, user.id, payload.parent_id)  # validate ownership
+        _get_owned_category(db, user.id, payload.parent_id)
 
     cat = models.Category(
         user_id=user.id,
@@ -99,7 +99,7 @@ def update_category(
         new_parent_id = data["parent_id"]
         if new_parent_id == category_id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "A category cannot be its own parent")
-        _get_owned_category(db, user.id, new_parent_id)  # validate ownership
+        _get_owned_category(db, user.id, new_parent_id)
         if new_parent_id in descendant_category_ids(db, user.id, category_id):
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,

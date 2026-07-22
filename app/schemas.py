@@ -12,7 +12,6 @@ def _validate_month(v: str) -> str:
     return v
 
 
-# ----------------------------- Categories -----------------------------
 class CategoryBase(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     parent_id: int | None = None
@@ -52,7 +51,6 @@ class CategoryTree(CategoryOut):
     children: list["CategoryTree"] = Field(default_factory=list)
 
 
-# ----------------------------- Transactions -----------------------------
 class TransactionBase(BaseModel):
     amount: float = Field(gt=0)
     category_id: int | None = None
@@ -123,7 +121,6 @@ class SmsIngestResult(BaseModel):
     transaction: TransactionOut | None = None
 
 
-# ----------------------------- SMS Capture -----------------------------
 class SmsCapture(BaseModel):
     """Raw SMS capture payload from the mobile app."""
 
@@ -151,7 +148,6 @@ class ReviewBatchResult(BaseModel):
     updated: int  # number of transactions marked as reviewed
 
 
-# --------------------------- Capture rules ("remember") ---------------------------
 class CaptureRuleIn(BaseModel):
     """Create a 'remember' rule from a structured form.
 
@@ -188,7 +184,6 @@ class CaptureRuleResult(BaseModel):
     applied: int  # existing unreviewed SMS captures updated by this rule
 
 
-# ----------------------------- Budgets -----------------------------
 class BudgetUpsert(BaseModel):
     category_id: int
     month: str
@@ -206,7 +201,6 @@ class BudgetOut(BaseModel):
     limit_amount: float
 
 
-# ----------------------------- Investments -----------------------------
 class InvestmentCreate(BaseModel):
     amount: float = Field(gt=0)
     month: str
@@ -226,7 +220,6 @@ class InvestmentOut(BaseModel):
     note: str | None
 
 
-# ----------------------------- Dashboard -----------------------------
 class SpendingRow(BaseModel):
     category_id: int | None
     category_name: str
@@ -248,7 +241,6 @@ class MonthlyInvestment(BaseModel):
     total: float
 
 
-# ----------------------------- Chat / LLM agent -----------------------------
 class ChatRequest(BaseModel):
     conversation_id: str = Field(..., description="Per-session id == LangGraph thread_id.")
     message: str = Field(..., min_length=1)

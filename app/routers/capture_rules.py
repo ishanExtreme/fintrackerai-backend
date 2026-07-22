@@ -43,7 +43,6 @@ def create_rule(
                 status.HTTP_400_BAD_REQUEST, "location rule needs lat and lng"
             )
 
-    # Validate category ownership if provided.
     if payload.category_id is not None:
         owned = (
             db.query(models.Category)

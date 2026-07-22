@@ -15,7 +15,6 @@ import time
 from typing import Iterator
 
 
-# --- ANSI palette --------------------------------------------------------- #
 class _C:
     RESET = "\033[0m"
     DIM = "\033[2m"

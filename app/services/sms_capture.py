@@ -21,7 +21,6 @@ from ..services.agent.tools import format_user_categories
 logger = logging.getLogger("sms_capture")
 
 
-# ------------------------------- Pydantic model ------------------------------- #
 class SmsExpense(BaseModel):
     """Structured extraction from a single financial SMS."""
 
@@ -80,7 +79,6 @@ class SmsExpense(BaseModel):
     )
 
 
-# ------------------------------- Prompt template ------------------------------- #
 _SYSTEM_PROMPT = """\
 You are an expense extraction assistant. You receive financial SMS notifications \
 (from Indian banks/UPI apps) and must extract structured expense data.
@@ -118,7 +116,6 @@ Respond with valid JSON matching the required schema.
 """
 
 
-# ------------------------------- Extractor ------------------------------- #
 def _parse_date_str(s: str | None, today: dt.date) -> dt.date | None:
     """Parse a date string, resolving relative dates against *today*."""
     if not s:
@@ -152,14 +149,11 @@ def extract_with_context(
     """
     today = dt.date.today()
 
-    # Build category context for the user
     categories_ctx = format_user_categories(db, user_id)
 
-    # Get the model (possibly with SMS-specific override)
     model = get_model(model_override)
     structured_model = model.with_structured_output(SmsExpense)
 
-    # Build prompt
     # Note: raw lat/lng are intentionally NOT sent to the LLM — coordinates are
     # noise to the model. The reverse-geocoded place_label carries the useful
     # signal; the coords are still persisted on the transaction row by the caller.

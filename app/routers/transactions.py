@@ -267,7 +267,6 @@ async def capture_sms(
     Returns 200 in all cases (including ``skipped`` on no-key / extraction
     failure) so the mobile queue drains the item instead of retrying forever.
     """
-    # 1. Dedupe on raw_hash
     existing = (
         db.query(models.Transaction)
         .filter(
@@ -282,9 +281,8 @@ async def capture_sms(
             transaction=schemas.TransactionOut.model_validate(existing),
         )
 
-    # 2. LLM extraction — resolve the user's dedicated SMS key + model, then run
-    #    the (blocking) extractor in a worker thread inside a request scope so
-    #    get_model() picks up the key. to_thread propagates the contextvars.
+    # Run the (blocking) extractor in a worker thread inside a request scope so
+    # get_model() picks up the key. to_thread propagates the contextvars.
     sms_key = resolve_sms_llm_key(db, user)
     if not sms_key:
         logger.warning("SMS capture skipped for user %s: no LLM key available", user.id)
@@ -310,7 +308,7 @@ async def capture_sms(
     if not extraction.get("is_expense"):
         return schemas.SmsCaptureResult(status="skipped")
 
-    # 3. Resolve/create category (reuse the agent's resolver for parity).
+    # Reuse the agent's resolver for parity with the chat agent.
     category_name = extraction["category"]
     parent_name = extraction.get("parent_category")
     if not category_name or category_name == "Uncategorized":
@@ -324,7 +322,7 @@ async def capture_sms(
     subtitle = extraction.get("subtitle")
     location_label = payload.place_label
 
-    # 4. "Remember" rules — pre-correct known payees/places (still reviewed=False).
+    # "Remember" rules — pre-correct known payees/places (still reviewed=False).
     overrides = capture_rules.resolve_overrides(
         db, user.id, counterparty=counterparty, lat=payload.lat, lng=payload.lng
     )
