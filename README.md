@@ -7,6 +7,7 @@ dashboard aggregates.
 
 This is the backend/API only. It powers a companion Android (Flutter) app but is
 a standalone HTTP service — you can self-host it and point any client at it.
+....
 
 > A reference instance is deployed on Google Cloud Run:
 > `https://fintrackerai-backend-481204614409.asia-south1.run.app`
